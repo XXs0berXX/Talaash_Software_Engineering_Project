@@ -3,23 +3,26 @@
  * User login with Firebase and backend token validation
  */
 
-import React, { useState } from 'react';
-import { useRouter } from 'next/router';
-import Link from 'next/link';
-import FormInput from '../components/FormInput';
-import { auth } from '../lib/firebase';
-import { signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
-import axios from 'axios';
+import React, { useState } from "react";
+import { useRouter } from "next/router";
+import Link from "next/link";
+import FormInput from "../components/FormInput";
+import { auth } from "../lib/firebase";
+import {
+  signInWithEmailAndPassword,
+  sendPasswordResetEmail,
+} from "firebase/auth";
+import axios from "axios";
 
 export default function Login() {
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
   const [showForgotPassword, setShowForgotPassword] = useState(false);
-  const [resetEmail, setResetEmail] = useState('');
+  const [resetEmail, setResetEmail] = useState("");
   const [formData, setFormData] = useState({
-    email: '',
-    password: '',
+    email: "",
+    password: "",
   });
   const router = useRouter();
 
@@ -33,11 +36,11 @@ export default function Login() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError('');
-    setSuccess('');
+    setError("");
+    setSuccess("");
 
     if (!formData.email || !formData.password) {
-      setError('Please fill in all fields');
+      setError("Please fill in all fields");
       return;
     }
 
@@ -54,7 +57,10 @@ export default function Login() {
       // Get Firebase token
       const token = await userCredential.user.getIdToken();
 
-      console.log('Firebase ID Token Generated:', token.substring(0, 30) + '...');
+      console.log(
+        "Firebase ID Token Generated:",
+        token.substring(0, 30) + "..."
+      );
 
       // Step 2: Validate token with backend
       const response = await axios.post(
@@ -65,36 +71,41 @@ export default function Login() {
         }
       );
 
-      if (response.data.status === 'success') {
-        // Store token in localStorage for future requests
-        localStorage.setItem('authToken', token);
-        localStorage.setItem('user', JSON.stringify(response.data.user));
-
-        // Force hard reload to ensure app re-initializes with new token
-        if (response.data.user.role === 'admin') {
-          window.location.replace('/admin/dashboard');
-        } else {
-          window.location.replace('/dashboard');
+      if (response.data.status === "success") {
+        // Check if user is admin - block admin login through user portal
+        if (response.data.user.role === "admin") {
+          await auth.signOut(); // Sign out from Firebase
+          setError(
+            "Admin accounts cannot login here. Please use the admin login page."
+          );
+          return;
         }
+
+        // Store token in localStorage for future requests
+        localStorage.setItem("authToken", token);
+        localStorage.setItem("user", JSON.stringify(response.data.user));
+
+        // Redirect to user dashboard
+        window.location.replace("/admin/dashboard");
       }
     } catch (err) {
-      console.error('Login failed:', err);
+      console.error("Login failed:", err);
 
-      if (err.code === 'auth/user-not-found') {
-        setError('No account found with this email');
-      } else if (err.code === 'auth/wrong-password') {
-        setError('Incorrect password');
+      if (err.code === "auth/user-not-found") {
+        setError("No account found with this email");
+      } else if (err.code === "auth/wrong-password") {
+        setError("Incorrect password");
       } else if (err.response?.data?.detail) {
         const detail = err.response.data.detail;
         if (Array.isArray(detail) && detail.length > 0) {
-          setError(detail[0].msg || 'Validation failed');
-        } else if (typeof detail === 'string') {
+          setError(detail[0].msg || "Validation failed");
+        } else if (typeof detail === "string") {
           setError(detail);
         } else {
-          setError('An unknown backend error occurred.');
+          setError("An unknown backend error occurred.");
         }
       } else {
-        setError(err.message || 'Failed to login');
+        setError(err.message || "Failed to login");
       }
     } finally {
       setLoading(false);
@@ -103,42 +114,42 @@ export default function Login() {
 
   const handleForgotPassword = async (e) => {
     e.preventDefault();
-    setError('');
-    setSuccess('');
+    setError("");
+    setSuccess("");
 
     if (!resetEmail) {
-      setError('Please enter your email address');
+      setError("Please enter your email address");
       return;
     }
 
     // Only accept @khi.iba.edu.pk
-    if (!resetEmail.endsWith('@khi.iba.edu.pk')) {
-      setError('Please use your IBA Karachi email address (@khi.iba.edu.pk)');
+    if (!resetEmail.endsWith("@khi.iba.edu.pk")) {
+      setError("Please use your IBA Karachi email address (@khi.iba.edu.pk)");
       return;
     }
 
     try {
       setLoading(true);
-      
+
       await sendPasswordResetEmail(auth, resetEmail);
-      
-      setSuccess('Password reset email sent! Check your inbox.');
-      setResetEmail('');
-      
+
+      setSuccess("Password reset email sent! Check your inbox.");
+      setResetEmail("");
+
       // Close the forgot password modal after 3 seconds
       setTimeout(() => {
         setShowForgotPassword(false);
-        setSuccess('');
+        setSuccess("");
       }, 3000);
     } catch (err) {
-      console.error('Password reset failed:', err);
-      
-      if (err.code === 'auth/user-not-found') {
-        setError('No account found with this email');
-      } else if (err.code === 'auth/invalid-email') {
-        setError('Invalid email address');
+      console.error("Password reset failed:", err);
+
+      if (err.code === "auth/user-not-found") {
+        setError("No account found with this email");
+      } else if (err.code === "auth/invalid-email") {
+        setError("Invalid email address");
       } else {
-        setError(err.message || 'Failed to send reset email');
+        setError(err.message || "Failed to send reset email");
       }
     } finally {
       setLoading(false);
@@ -152,12 +163,12 @@ export default function Login() {
           {/* Header */}
           <div className="text-center mb-8">
             <h1 className="text-4xl font-bold text-gray-800 mb-2">
-              {showForgotPassword ? 'Reset Password' : 'Welcome Back'}
+              {showForgotPassword ? "Reset Password" : "Welcome Back"}
             </h1>
             <p className="text-gray-600">
-              {showForgotPassword 
-                ? 'Enter your email to receive a reset link' 
-                : 'Login to your Talash account'}
+              {showForgotPassword
+                ? "Enter your email to receive a reset link"
+                : "Login to your Talash account"}
             </p>
           </div>
 
@@ -192,15 +203,15 @@ export default function Login() {
                 disabled={loading}
                 className="w-full bg-primary hover:bg-opacity-90 text-white font-bold py-3 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {loading ? 'Sending...' : 'Send Reset Link'}
+                {loading ? "Sending..." : "Send Reset Link"}
               </button>
 
               <button
                 type="button"
                 onClick={() => {
                   setShowForgotPassword(false);
-                  setError('');
-                  setSuccess('');
+                  setError("");
+                  setSuccess("");
                 }}
                 className="w-full text-gray-600 hover:text-primary font-semibold py-2"
               >
@@ -248,7 +259,7 @@ export default function Login() {
                 disabled={loading}
                 className="w-full bg-primary hover:bg-opacity-90 text-white font-bold py-3 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {loading ? 'Logging in...' : 'Login'}
+                {loading ? "Logging in..." : "Login"}
               </button>
             </form>
           )}
@@ -257,7 +268,7 @@ export default function Login() {
             <>
               <div className="mt-6 text-center">
                 <p className="text-gray-600">
-                  Don't have an account?{' '}
+                  Don't have an account?{" "}
                   <Link href="/signup">
                     <span className="text-primary font-bold cursor-pointer hover:underline">
                       Sign up here

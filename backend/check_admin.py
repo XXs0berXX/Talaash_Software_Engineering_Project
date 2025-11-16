@@ -1,51 +1,70 @@
 """
-Script to check which database your app is using
+Script to check admin users in the database
+Run this in your backend directory: python check_admin.py
 """
+
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import sessionmaker
 import os
 from dotenv import load_dotenv
 
+# Load environment variables
 load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./talaash.db")
+# Get database URL from environment
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./database/talash.db")
 
-print("=" * 80)
-print("DATABASE CONFIGURATION CHECK")
-print("=" * 80)
-print(f"\nDatabase URL from .env: {DATABASE_URL}")
+print("\n" + "="*80)
+print("CHECKING DATABASE:", DATABASE_URL)
+print("="*80)
 
-# Extract database file path for SQLite
-if "sqlite:///" in DATABASE_URL:
-    db_file = DATABASE_URL.replace("sqlite:///", "")
-    if db_file.startswith("./"):
-        db_file = db_file[2:]
+# Create engine and session
+engine = create_engine(DATABASE_URL)
+SessionLocal = sessionmaker(bind=engine)
+db = SessionLocal()
+
+try:
+    # Query all users
+    result = db.execute(text("SELECT id, name, email, role FROM users"))
+    users = result.fetchall()
     
-    print(f"Database file: {db_file}")
-    print(f"Absolute path: {os.path.abspath(db_file)}")
+    print("\nALL USERS IN DATABASE:")
+    print("="*80)
     
-    if os.path.exists(db_file):
-        print(f"✅ Database file EXISTS")
-        size = os.path.getsize(db_file)
-        print(f"File size: {size:,} bytes")
+    if not users:
+        print("❌ No users found in database!")
+        print("\n⚠️  You need to create an admin user first!")
+        print("Run: python create_admin.py")
     else:
-        print(f"❌ Database file DOES NOT EXIST")
-else:
-    print("Using PostgreSQL or other database (not SQLite)")
-
-print("\n" + "=" * 80)
-
-# Check if database/talash.db exists (from create_admin.py)
-admin_db_path = "database/talash.db"
-print(f"\nAdmin script database: {admin_db_path}")
-print(f"Absolute path: {os.path.abspath(admin_db_path)}")
-
-if os.path.exists(admin_db_path):
-    print(f"✅ Admin database file EXISTS")
-    size = os.path.getsize(admin_db_path)
-    print(f"File size: {size:,} bytes")
-else:
-    print(f"❌ Admin database file DOES NOT EXIST")
-
-print("\n" + "=" * 80)
-print("\n⚠️  WARNING: If the paths are different, your admin user might be in a")
-print("different database than your app is using!")
-print("=" * 80 + "\n")
+        for user in users:
+            user_id, name, email, role = user
+            admin_badge = " ⭐ ADMIN" if role == "admin" else ""
+            print(f"\n{'='*80}")
+            print(f"ID: {user_id}")
+            print(f"Name: {name}")
+            print(f"Email: {email}")
+            print(f"Role: {role}{admin_badge}")
+        
+        print(f"\n{'='*80}")
+    
+    # Count admins
+    admin_count = db.execute(text("SELECT COUNT(*) FROM users WHERE role = 'admin'")).scalar()
+    total_count = len(users)
+    
+    print(f"\n📊 STATISTICS:")
+    print(f"   Total users: {total_count}")
+    print(f"   Admin users: {admin_count}")
+    print(f"   Regular users: {total_count - admin_count}")
+    
+    if admin_count == 0:
+        print("\n⚠️  WARNING: No admin users found!")
+        print("   Run: python create_admin.py")
+    
+    print("="*80 + "\n")
+    
+except Exception as e:
+    print(f"❌ Error: {e}")
+    import traceback
+    traceback.print_exc()
+finally:
+    db.close()

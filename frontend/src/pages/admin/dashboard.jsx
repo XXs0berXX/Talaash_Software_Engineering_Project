@@ -231,7 +231,7 @@ function AdminDashboardContent() {
                     : 'border-transparent text-gray-500'
                 }`}
               >
-                ⏳ Pending Lost ({stats?.pending_lost_items || 0})
+                Pending Lost ({stats?.pending_lost_items || 0})
               </button>
               <button
                 onClick={() => setActiveTab('approved')}
@@ -241,7 +241,7 @@ function AdminDashboardContent() {
                     : 'border-transparent text-gray-500'
                 }`}
               >
-                ✅ Found Items ({stats?.approved_items || 0})
+                Found Items ({stats?.approved_items || 0})
               </button>
             </div>
           </div>

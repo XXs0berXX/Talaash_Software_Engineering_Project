@@ -318,16 +318,10 @@ function MyReportsContent() {
         {/* Quick Actions */}
         <div className="mt-8 bg-white rounded-lg shadow p-6">
           <h3 className="text-xl font-bold mb-4">Quick Actions</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="max-w-md">
             <button
               onClick={() => router.push('/report-found')}
               className="bg-primary hover:bg-opacity-90 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
-            >
-              Report Found Item
-            </button>
-            <button
-              onClick={() => router.push('/report-lost')}
-              className="bg-secondary hover:bg-opacity-90 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
             >
               Report Lost Item
             </button>
