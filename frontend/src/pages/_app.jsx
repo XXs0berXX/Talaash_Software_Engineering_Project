@@ -12,6 +12,7 @@ function MyApp({ Component, pageProps }) {
     '/',           // Landing page (has its own design)
     '/login',      // Login page (has its own navbar)
     '/signup',     // Signup page (has its own navbar)
+    '/admin/login' // Admin login page (has its own navbar)
   ];
   
   // Check if current page should show navbar
