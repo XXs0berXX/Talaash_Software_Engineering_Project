@@ -73,3 +73,8 @@ logs/
 # Python virtual environments
 venv/
 backend/venv/
+backend/talashenv/
+backend/seproj/
+
+backend/app/*.json
+*.json
