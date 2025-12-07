@@ -1,6 +1,5 @@
 /**
- * Dashboard Page - For Authenticated Users
- * Separate sections for user's reports and browsable items
+ * Dashboard Page - Updated with proper status handling
  */
 
 import React, { useState, useEffect } from "react";
@@ -36,7 +35,7 @@ function DashboardContent() {
         `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/items/found`,
         {
           params: {
-            status_filter: "approved",
+            //status_filter: "approved",
             limit: 12,
           },
         }
@@ -151,6 +150,12 @@ function DashboardContent() {
           🎉 Found
         </span>
       );
+    } else if (status === "claimed") {
+      return (
+        <span className="bg-purple-100 text-purple-800 px-3 py-1 rounded-full text-sm font-semibold">
+          ✓ Claimed
+        </span>
+      );
     }
     return null;
   };
@@ -177,7 +182,7 @@ function DashboardContent() {
       );
 
       if (response.data.status === 'success') {
-        alert('Item marked as found!');
+        alert('Item marked as found! 🎉');
         await fetchMyReports();
       }
     } catch (err) {
@@ -236,17 +241,16 @@ function DashboardContent() {
               </div>
               <h3 className="text-lg font-bold mb-2">Report or Search</h3>
               <p className="text-gray-600 text-sm">
-                Lost something? Search our database.
+                Lost something? Search our database or report it.
               </p>
             </div>
             <div className="text-center">
               <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <span className="text-3xl">2️⃣</span>
               </div>
-              <h3 className="text-lg font-bold mb-2">Admin Review</h3>
+              <h3 className="text-lg font-bold mb-2">Claim Items</h3>
               <p className="text-gray-600 text-sm">
-                Our team reviews submissions to ensure accuracy and prevent
-                misuse.
+                Found your item? Submit a claim for admin review.
               </p>
             </div>
             <div className="text-center">
@@ -255,8 +259,7 @@ function DashboardContent() {
               </div>
               <h3 className="text-lg font-bold mb-2">Get Reunited</h3>
               <p className="text-gray-600 text-sm">
-                Once approved, items are visible to help reunite them with their
-                owners.
+                Once approved, visit the office to collect your item!
               </p>
             </div>
           </div>
@@ -355,32 +358,9 @@ function DashboardContent() {
               </div>
             ) : (
               <>
-                {/* Found Items */}
-                {myFoundItems.length > 0 && (
-                  <div className="mb-8">
-                    <h3 className="text-xl font-semibold mb-4">
-                      Found Items ({myFoundItems.length})
-                    </h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                      {myFoundItems.map((item) => (
-                        <div key={item.id} className="relative">
-                          <ItemCard
-                            item={item}
-                            type="found"
-                            showClaimButton={false}
-                          />
-                          <div className="absolute top-4 right-4">
-                            {getStatusBadge(item.status)}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
                 {/* Lost Items */}
                 {myLostItems.length > 0 && (
-                  <div>
+                  <div className="mb-8">
                     <h3 className="text-xl font-semibold mb-4">
                       Lost Items ({myLostItems.length})
                     </h3>
@@ -395,16 +375,39 @@ function DashboardContent() {
                           <div className="absolute top-4 right-4">
                             {getStatusBadge(item.status)}
                           </div>
-                          {item.status === "active" && (
+                          {(item.status === "active" || item.status === "approved") && (
                             <div className="absolute bottom-4 left-4 right-4">
                               <button
                                 onClick={() => handleMarkAsFound(item.id)}
-                                className="w-full bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 font-semibold text-sm"
+                                className="w-full bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 font-semibold text-sm transition-colors"
                               >
                                 ✓ Mark as Found
                               </button>
                             </div>
                           )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Found Items (if any) */}
+                {myFoundItems.length > 0 && (
+                  <div className="mb-8">
+                    <h3 className="text-xl font-semibold mb-4">
+                      Found Items I Reported ({myFoundItems.length})
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                      {myFoundItems.map((item) => (
+                        <div key={item.id} className="relative">
+                          <ItemCard
+                            item={item}
+                            type="found"
+                            showClaimButton={false}
+                          />
+                          <div className="absolute top-4 right-4">
+                            {getStatusBadge(item.status)}
+                          </div>
                         </div>
                       ))}
                     </div>

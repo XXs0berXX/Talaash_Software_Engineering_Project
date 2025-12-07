@@ -461,7 +461,7 @@ async def upload_lost_item(
     token: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db)
 ):
-    """Upload a lost item with image"""
+    """Upload a lost item with image - automatically approved"""
     
     token_str = token.credentials
     user_data = get_user_from_token(token_str)
@@ -523,14 +523,18 @@ async def upload_lost_item(
     
     image_url = f"/uploads/{unique_filename}"
     
-    db_item = create_lost_item(
-        db=db,
+    # Create lost item with active status (auto-approved)
+    db_item = LostItemDB(
         user_id=db_user.id,
         description=description,
         location=location,
         date_lost=date_lost_obj,
-        image_url=image_url
+        image_url=image_url,
+        status="active"  # Lost items are active (visible) by default
     )
+    db.add(db_item)
+    db.commit()
+    db.refresh(db_item)
     
     return db_item
 
@@ -540,7 +544,7 @@ def get_lost_items_list(
     db: Session = Depends(get_db),
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=50),
-    status_filter: str = Query("approved", regex="^(pending|approved|found|all)$")
+    status_filter: str = Query("approved", regex="^(approved|found|all)$")
 ):
     """Get list of lost items"""
     
@@ -585,6 +589,59 @@ def get_my_lost_items(
     return {
         "items": items,
         "total": len(items)
+    }
+
+
+@router.post("/lost/{item_id}/mark-found")
+def mark_lost_item_as_found(
+    item_id: int,
+    token: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db)
+):
+    """Mark a lost item as found (only owner can mark)"""
+    
+    token_str = token.credentials
+    user_data = get_user_from_token(token_str)
+    if not user_data:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token"
+        )
+    
+    db_user = get_user_by_email(db, user_data.get("email"))
+    if not db_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    db_item = db.query(LostItemDB).filter(LostItemDB.id == item_id).first()
+    if not db_item:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Item not found"
+        )
+    
+    if db_item.user_id != db_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only mark your own items as found"
+        )
+    
+    # Update status and timestamp
+    db_item.status = "found"
+    db_item.found_at = datetime.utcnow()
+    db.commit()
+    db.refresh(db_item)
+    
+    return {
+        "status": "success",
+        "message": "Item marked as found successfully!",
+        "item": {
+            "id": db_item.id,
+            "status": db_item.status,
+            "found_at": db_item.found_at.isoformat() if db_item.found_at else None
+        }
     }
 
 
@@ -636,53 +693,3 @@ def delete_lost_item(
     db.commit()
     
     return {"status": "success", "message": "Item deleted successfully"}
-
-
-@router.post("/lost/{item_id}/mark-found")
-def mark_lost_item_as_found(
-    item_id: int,
-    token: HTTPAuthorizationCredentials = Depends(security),
-    db: Session = Depends(get_db)
-):
-    """Mark a lost item as found (only owner can mark)"""
-    
-    token_str = token.credentials
-    user_data = get_user_from_token(token_str)
-    if not user_data:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token"
-        )
-    
-    db_user = get_user_by_email(db, user_data.get("email"))
-    if not db_user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
-        )
-    
-    db_item = db.query(LostItemDB).filter(LostItemDB.id == item_id).first()
-    if not db_item:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Item not found"
-        )
-    
-    if db_item.user_id != db_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You can only mark your own items as found"
-        )
-    
-    db_item.status = "found"
-    db.commit()
-    db.refresh(db_item)
-    
-    return {
-        "status": "success",
-        "message": "Item marked as found successfully!",
-        "item": {
-            "id": db_item.id,
-            "status": db_item.status
-        }
-    }

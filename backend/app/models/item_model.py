@@ -34,6 +34,7 @@ class FoundItemDB(Base):
     claimed_at = Column(DateTime, nullable=True)  # When item was claimed
 
 
+
 class LostItemDB(Base):
     """SQLAlchemy Lost Item model"""
     __tablename__ = "lost_items"
@@ -44,15 +45,52 @@ class LostItemDB(Base):
     location = Column(String, nullable=False)
     date_lost = Column(DateTime, nullable=False)
     image_url = Column(String, nullable=True)
-    status = Column(String, default="active")  # pending, approved, found, rejected
+    # Status options: active (visible/searchable), found (recovered by owner)
+    status = Column(String, default="active")
     created_at = Column(DateTime, default=datetime.utcnow)
     
-    # NEW: Incident Report Fields
+    # Incident Report Fields
     incident_report = Column(Text, nullable=True)
     incident_updated_at = Column(DateTime, nullable=True)
     incident_updated_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     found_at = Column(DateTime, nullable=True)  # When item was found
 
+
+def create_lost_item(
+    db: Session,
+    user_id: int,
+    description: str,
+    location: str,
+    date_lost: datetime,
+    image_url: Optional[str] = None
+) -> LostItemDB:
+    """
+    Create a new lost item record with 'active' status
+    Lost items are immediately visible (no admin approval needed)
+    
+    Args:
+        db: Database session
+        user_id: ID of user reporting item
+        description: Item description
+        location: Location where item was lost
+        date_lost: Date and time item was lost
+        image_url: Optional image URL
+        
+    Returns:
+        Created lost item object with status='active'
+    """
+    db_item = LostItemDB(
+        user_id=user_id,
+        description=description,
+        location=location,
+        date_lost=date_lost,
+        image_url=image_url,
+        status="active"  # Lost items start as active
+    )
+    db.add(db_item)
+    db.commit()
+    db.refresh(db_item)
+    return db_item
 
 class FoundItemRequest(BaseModel):
     """Pydantic model for found item creation"""

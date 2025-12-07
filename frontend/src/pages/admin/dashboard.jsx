@@ -1,6 +1,5 @@
 /**
- * Admin Dashboard Page - WITH CLAIM REQUESTS
- * Shows pending lost items and claim requests
+ * Admin Dashboard Page - Updated to filter out found lost items
  */
 
 import React, { useState, useEffect } from 'react';
@@ -183,53 +182,6 @@ function AdminDashboardContent() {
     }
   };
 
-  const handleApproveLost = async (itemId) => {
-    try {
-      const response = await axios.post(
-        `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/admin/lost-items/${itemId}/approve`,
-        {},
-        {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        }
-      );
-
-      if (response.data.status === 'success') {
-        await fetchItems('pending-lost');
-        await refreshStats();
-        alert('Lost item approved!');
-      }
-    } catch (err) {
-      console.error('Failed to approve lost item:', err);
-      alert('Failed to approve lost item');
-    }
-  };
-
-  const handleRejectLost = async (itemId) => {
-    if (!confirm('Reject this lost item request?')) return;
-
-    try {
-      const response = await axios.post(
-        `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/admin/lost-items/${itemId}/reject`,
-        {},
-        {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        }
-      );
-
-      if (response.data.status === 'success') {
-        await fetchItems('pending-lost');
-        await refreshStats();
-      }
-    } catch (err) {
-      console.error('Failed to reject lost item:', err);
-      alert('Failed to reject lost item');
-    }
-  };
-
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="container mx-auto px-4 py-12 max-w-7xl">
@@ -254,7 +206,7 @@ function AdminDashboardContent() {
             </div>
             <div className="bg-white rounded-lg shadow p-6 text-center border-l-4 border-yellow-500">
               <h3 className="text-3xl font-bold text-yellow-600">
-                {stats.pending_lost_items || 0}
+                {stats.approved_lost_items || 0}
               </h3>
               <p className="text-gray-600 mt-2">Active Lost Items</p>
             </div>
@@ -301,7 +253,7 @@ function AdminDashboardContent() {
                     : 'border-transparent text-gray-500'
                 }`}
               >
-                Active Lost ({stats?.pending_lost_items || 0})
+                Active Lost ({stats?.approved_lost_items || 0})
               </button>
               <button
                 onClick={() => setActiveTab('approved')}
@@ -382,6 +334,11 @@ function AdminDashboardContent() {
               </div>
             ) : activeTab === 'pending-lost' ? (
               <div className="space-y-4">
+                <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg mb-4">
+                  <p className="text-sm text-blue-800">
+                    ℹ️ <strong>Note:</strong> Lost items marked as "found" by their owners are automatically removed from this list.
+                  </p>
+                </div>
                 {items.map((item) => (
                   <div key={item.id} className="border rounded-lg p-4 flex gap-4">
                     {item.image_url && (
@@ -397,6 +354,9 @@ function AdminDashboardContent() {
                       <p className="text-sm text-gray-600">
                         📅 {new Date(item.date_lost || item.created_at).toLocaleDateString()}
                       </p>
+                      <span className="inline-block mt-2 bg-green-100 text-green-800 px-3 py-1 rounded-full text-xs font-semibold">
+                        Active - Waiting for recovery
+                      </span>
                     </div>
                   </div>
                 ))}

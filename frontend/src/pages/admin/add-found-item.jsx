@@ -74,118 +74,54 @@ function AdminAddFoundItemContent() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    // FIXED: Access form data from formData state object
+    const { description, location, date_found, image } = formData;
+    
+    if (!description || !location || !date_found || !image) {
+      setError('Please fill in all fields');
+      return;
+    }
+
+    setLoading(true);
     setError('');
-    setSuccess('');
-
-    // Validation
-    if (!formData.description.trim()) {
-      setError('Description is required');
-      return;
-    }
-
-    if (!formData.location.trim()) {
-      setError('Location is required');
-      return;
-    }
-
-    if (!formData.date_found) {
-      setError('Date found is required');
-      return;
-    }
-
-    if (!formData.image) {
-      setError('Image is required');
-      return;
-    }
-
-    // Get fresh token
-    const user = auth.currentUser;
-    if (!user) {
-      setError("User is not authenticated. Please refresh and log in.");
-      return;
-    }
-
-    let freshToken;
-    try {
-      freshToken = await user.getIdToken(true);
-    } catch (tokenError) {
-      setError('Failed to refresh authentication token. Please log out and log back in.');
-      return;
-    }
 
     try {
-      setLoading(true);
-
-      // Create FormData for multipart upload
-      const uploadData = new FormData();
-      uploadData.append('description', formData.description);
-      uploadData.append('location', formData.location);
-
-      // Date format validation and conversion
-      const rawDate = formData.date_found;
-
-      if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(rawDate)) {
-        setError('Invalid date/time format. Please use the calendar picker.');
-        setLoading(false);
+      const user = auth.currentUser;
+      if (!user) {
+        setError('Please sign in');
         return;
       }
 
-      const dateToSubmit = rawDate + ':00';
-      uploadData.append('date_found', dateToSubmit);
-      uploadData.append('file', formData.image);
+      const userToken = await user.getIdToken();
 
-      // Upload to backend - use admin endpoint
+      // Create FormData
+      const submitData = new FormData();
+      submitData.append('description', description);
+      submitData.append('location', location);
+      submitData.append('date_found', date_found);
+      submitData.append('file', image);
+
+      // Call admin endpoint
       const response = await axios.post(
-        `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/admin/items/found`,
-        uploadData,
+        `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/admin/items/found/add`,
+        submitData,
         {
           headers: {
-            'Authorization': `Bearer ${freshToken}`,
+            'Authorization': `Bearer ${userToken}`,
+            'Content-Type': 'multipart/form-data',
           },
         }
       );
 
-      if (response.status === 201) {
-        setSuccess('Found item added successfully and is now visible to all users!');
-        setFormData({
-          description: '',
-          location: '',
-          date_found: '',
-          image: null,
-        });
-
-        // Reset file input
-        const fileInput = document.getElementById('image');
-        if (fileInput) fileInput.value = '';
-
-        // Redirect after 2 seconds
-        setTimeout(() => {
-          router.push('/admin/dashboard');
-        }, 2000);
+      if (response.data.status === 'success') {
+        alert('✅ Found item added successfully and is now available for claiming!');
+        router.push('/admin/dashboard');
       }
     } catch (err) {
-      console.error('Upload failed:', err);
-
-      if (err.response?.status === 401 || err.response?.status === 403) {
-        setError('Authorization failed. Admin access required.');
-      } else if (err.response?.data?.detail) {
-        const errorDetail = err.response.data.detail;
-
-        if (Array.isArray(errorDetail)) {
-          const formattedError = errorDetail
-            .map(d => `${d.loc.filter(l => typeof l === 'string').join(' > ')}: ${d.msg}`)
-            .join('; ');
-          setError('Validation Error: ' + formattedError);
-        } else if (typeof errorDetail === 'string') {
-          setError(errorDetail);
-        } else if (typeof errorDetail === 'object' && errorDetail !== null) {
-          setError(errorDetail.detail || JSON.stringify(errorDetail));
-        } else {
-          setError(err.message || 'Failed to add item.');
-        }
-      } else {
-        setError(err.message || 'Failed to add item. Check your connection.');
-      }
+      console.error('Failed to add found item:', err);
+      const errorMessage = err.response?.data?.detail || 'Failed to add found item';
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
