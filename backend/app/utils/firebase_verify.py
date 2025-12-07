@@ -7,7 +7,7 @@ import os
 from typing import Optional, Dict
 import firebase_admin
 from firebase_admin import credentials, auth
-from firebase_admin import exceptions # Import the exceptions module
+from firebase_admin import exceptions
 from fastapi import HTTPException, status
 
 
@@ -18,19 +18,30 @@ def initialize_firebase():
     """
     try:
         if not firebase_admin._apps:
-            # Try to load from environment variable first
             config_path = os.getenv("FIREBASE_CONFIG_PATH")
-            if config_path and os.path.exists(config_path):
-                # 💡 Ensure this path is an absolute path or relative to where main.py is run
-                cred = credentials.Certificate(config_path)
-                firebase_admin.initialize_app(cred)
-            else:
-                # For development, use default credentials (NOTE: This is what caused the DefaultCredentialsError)
-                print("WARNING: FIREBASE_CONFIG_PATH not set or file not found. Attempting default initialization.")
-                firebase_admin.initialize_app()
+            
+            if not config_path:
+                raise ValueError(
+                    "FIREBASE_CONFIG_PATH environment variable is not set. "
+                    "Please set it to the path of your Firebase service account JSON file."
+                )
+            
+            if not os.path.exists(config_path):
+                raise FileNotFoundError(
+                    f"Firebase credentials file not found at: {config_path}"
+                )
+            
+            # Initialize with credentials
+            cred = credentials.Certificate(config_path)
+            firebase_admin.initialize_app(cred)
+            print(f"✅ Firebase initialized successfully with credentials from: {config_path}")
+            
+    except (ValueError, FileNotFoundError) as e:
+        print(f"❌ Firebase initialization error: {e}")
+        raise
     except Exception as e:
-        print(f"Firebase initialization error: {e}")
-        print("Note: Firebase must be configured correctly for login to work.")
+        print(f"❌ Unexpected Firebase initialization error: {e}")
+        raise
 
 
 def verify_token(token: str) -> Optional[Dict]:
@@ -41,36 +52,59 @@ def verify_token(token: str) -> Optional[Dict]:
         token: Firebase ID token
         
     Returns:
-        Dict with user claims if valid, None otherwise
+        Dict with user claims if valid
         
     Raises:
         HTTPException: If token is invalid or expired
     """
     try:
-        # initialize_firebase() is called here, which is fine, but it's often called once on app startup (in auth_routes.py)
-        # We'll leave it here as it was in the original code, but keep the initial call in auth_routes.py as well.
-        initialize_firebase() 
+        print(f"🔍 Attempting to verify token...")
+        print(f"Token length: {len(token)}")
+        print(f"Token preview: {token[:100]}...")
+        
+        # Verify the token
         decoded_token = auth.verify_id_token(token)
+        
+        print(f"✅ Token decoded successfully!")
+        print(f"Decoded token keys: {decoded_token.keys()}")
+        
         return decoded_token
-    # 💡 FIX: Catch the generic FirebaseError which covers ExpiredSignatureError and InvalidIdTokenError
-    except exceptions.FirebaseError as e: 
-        # Check for specific error types if needed for distinct messages
-        if 'expired' in str(e).lower():
-             detail_message = "Token has expired"
-        elif 'invalid' in str(e).lower():
-             detail_message = "Invalid token"
-        else:
-             detail_message = f"Token verification failed: {str(e)}"
-             
+        
+    except auth.ExpiredIdTokenError as e:
+        print(f"❌ Token expired: {e}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=detail_message
+            detail="Token has expired. Please login again."
         )
-    except Exception as e:
-        # Catch all other unexpected errors (e.g., initial configuration issues)
+        
+    except auth.InvalidIdTokenError as e:
+        print(f"❌ Invalid token: {e}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, # Changed to 500 since this is likely a server/config error
-            detail=f"Server configuration error during token verification: {str(e)}"
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token. Please login again."
+        )
+        
+    except auth.RevokedIdTokenError as e:
+        print(f"❌ Token revoked: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token has been revoked. Please login again."
+        )
+        
+    except exceptions.FirebaseError as e:
+        print(f"❌ Firebase error during token verification: {type(e).__name__}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Token verification failed: {str(e)}"
+        )
+        
+    except Exception as e:
+        print(f"❌ Unexpected error during token verification: {type(e).__name__}: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Server error during authentication: {str(e)}"
         )
 
 
@@ -82,21 +116,35 @@ def get_user_from_token(token: str) -> Optional[Dict]:
         token: Firebase ID token
         
     Returns:
-        Dict containing user email, uid, and other claims
+        Dict containing user email, uid, and other claims, or None if verification fails
     """
     try:
+        print("📝 get_user_from_token called")
         decoded_token = verify_token(token)
-        if not decoded_token: # Should not happen if verify_token raises HTTPException, but good for safety
-             return None
-             
-        return {
+        
+        if not decoded_token:
+            print("⚠️ verify_token returned None")
+            return None
+        
+        user_info = {
             "uid": decoded_token.get("uid"),
             "email": decoded_token.get("email"),
             "name": decoded_token.get("name"),
             "email_verified": decoded_token.get("email_verified", False)
         }
-    except HTTPException:
-        # If verify_token raises an HTTPException (401), we catch it here and return None for the router logic
+        
+        print(f"✅ User info extracted: {user_info}")
+        return user_info
+        
+    except HTTPException as e:
+        print(f"⚠️ HTTPException caught in get_user_from_token: {e.detail}")
+        # Don't re-raise, just return None so the router can handle it
+        return None
+        
+    except Exception as e:
+        print(f"❌ Unexpected error in get_user_from_token: {type(e).__name__}: {e}")
+        import traceback
+        traceback.print_exc()
         return None
 
 

@@ -1,24 +1,26 @@
 /**
  * Signup Page
- * User registration with Firebase and backend
+ * User registration with Firebase and backend validation
+ * Now includes mobile number field
  */
 
-import React, { useState } from 'react';
-import { useRouter } from 'next/router';
-import Link from 'next/link';
-import FormInput from '../components/FormInput';
-import { auth } from '../lib/firebase';
-import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
-import axios from 'axios';
+import React, { useState } from "react";
+import { useRouter } from "next/router";
+import Link from "next/link";
+import FormInput from "../components/FormInput";
+import { auth } from "../lib/firebase";
+import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
+import axios from "axios";
 
 export default function Signup() {
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
   const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    password: '',
-    confirmPassword: '',
+    name: "",
+    email: "",
+    mobile: "",
+    password: "",
+    confirmPassword: "",
   });
   const router = useRouter();
 
@@ -30,38 +32,59 @@ export default function Signup() {
     }));
   };
 
+  const validateMobile = (mobile) => {
+    // Remove spaces and dashes
+    const cleaned = mobile.replace(/[\s\-\(\)]/g, '');
+    
+    // Check Pakistani mobile format
+    const pattern1 = /^03[0-9]{9}$/; // 03XXXXXXXXX
+    const pattern2 = /^\+923[0-9]{9}$/; // +923XXXXXXXXX
+    
+    return pattern1.test(cleaned) || pattern2.test(cleaned);
+  };
+
   const validateForm = () => {
     if (!formData.name.trim()) {
-      setError('Name is required');
+      setError("Name is required");
       return false;
     }
 
     if (!formData.email.trim()) {
-      setError('Email is required');
+      setError("Email is required");
       return false;
     }
 
     // Fixed validation: Accept both @iba.edu.pk and @khi.iba.edu.pk
-    const isValidIBAEmail = formData.email.endsWith('@iba.edu.pk') || 
-                           formData.email.endsWith('@khi.iba.edu.pk');
+    const isValidIBAEmail = formData.email.endsWith("@iba.edu.pk") || 
+                           formData.email.endsWith("@khi.iba.edu.pk");
     
     if (!isValidIBAEmail) {
-      setError('Only @iba.edu.pk or @khi.iba.edu.pk email addresses are allowed');
+      setError("Only @iba.edu.pk or @khi.iba.edu.pk email addresses are allowed");
+      return false;
+    }
+
+    if (!formData.mobile.trim()) {
+      setError("Mobile number is required");
+      return false;
+    }
+
+    if (!validateMobile(formData.mobile)) {
+      setError("Please enter a valid Pakistani mobile number (e.g., 03001234567)");
       return false;
     }
 
     if (!formData.password) {
-      setError('Password is required');
+      setError("Password is required");
       return false;
     }
 
     if (formData.password.length < 6) {
-      setError('Password must be at least 6 characters');
+      setError("Password must be at least 6 characters");
       return false;
     }
 
     if (formData.password !== formData.confirmPassword) {
-      setError('Passwords do not match');
+      setError("Passwords do not match");
       return false;
     }
 
@@ -70,7 +93,7 @@ export default function Signup() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError('');
+    setError("");
 
     if (!validateForm()) {
       return;
@@ -91,31 +114,36 @@ export default function Signup() {
         displayName: formData.name,
       });
 
-      // Get Firebase token
-      const token = await userCredential.user.getIdToken();
-
       // Step 2: Create user record in backend
       const response = await axios.post(
         `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/auth/signup`,
         {
           name: formData.name,
           email: formData.email,
+          mobile: formData.mobile.replace(/[\s\-\(\)]/g, ''), // Clean mobile before sending
         }
       );
 
       if (response.status === 201) {
-        // Success - redirect to dashboard
-        router.push('/dashboard');
+        // Success - redirect to login
+        router.push("/login?signup=success");
       }
     } catch (err) {
-      console.error('Signup failed:', err);
+      console.error("Signup failed:", err);
       
-      if (err.code === 'auth/email-already-in-use') {
-        setError('Email already in use');
+      if (err.code === "auth/email-already-in-use") {
+        setError("Email already in use");
       } else if (err.response?.data?.detail) {
-        setError(err.response.data.detail);
+        const detail = err.response.data.detail;
+        if (Array.isArray(detail) && detail.length > 0) {
+          setError(detail[0].msg || "Validation failed");
+        } else if (typeof detail === "string") {
+          setError(detail);
+        } else {
+          setError("An unknown error occurred");
+        }
       } else {
-        setError(err.message || 'Failed to create account');
+        setError(err.message || "Failed to create account");
       }
     } finally {
       setLoading(false);
@@ -162,6 +190,17 @@ export default function Signup() {
             />
 
             <FormInput
+              label="Mobile Number"
+              type="tel"
+              placeholder="03001234567"
+              name="mobile"
+              value={formData.mobile}
+              onChange={handleChange}
+              required
+              disabled={loading}
+            />
+
+            <FormInput
               label="Password"
               type="password"
               placeholder="••••••••"
@@ -188,13 +227,13 @@ export default function Signup() {
               disabled={loading}
               className="w-full bg-primary hover:bg-opacity-90 text-white font-bold py-3 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {loading ? 'Creating Account...' : 'Sign Up'}
+              {loading ? "Creating Account..." : "Sign Up"}
             </button>
           </form>
 
           <div className="mt-6 text-center">
             <p className="text-gray-600">
-              Already have an account?{' '}
+              Already have an account?{" "}
               <Link href="/login">
                 <span className="text-primary font-bold cursor-pointer hover:underline">
                   Login here
