@@ -15,15 +15,18 @@ function DashboardContent() {
   const [browseItems, setBrowseItems] = useState([]);
   const [myFoundItems, setMyFoundItems] = useState([]);
   const [myLostItems, setMyLostItems] = useState([]);
+  const [myClaims, setMyClaims] = useState([]);
   const [loadingBrowse, setLoadingBrowse] = useState(true);
   const [loadingMyItems, setLoadingMyItems] = useState(true);
+  const [loadingClaims, setLoadingClaims] = useState(true);
   const [error, setError] = useState(null);
-  const [activeTab, setActiveTab] = useState("browse"); // 'browse' or 'my-reports'
+  const [activeTab, setActiveTab] = useState("browse");
   const router = useRouter();
 
   useEffect(() => {
     fetchBrowseItems();
     fetchMyReports();
+    fetchMyClaims();
   }, []);
 
   const fetchBrowseItems = async () => {
@@ -98,6 +101,31 @@ function DashboardContent() {
     }
   };
 
+  const fetchMyClaims = async () => {
+    try {
+      setLoadingClaims(true);
+      const user = auth.currentUser;
+      if (!user) return;
+
+      const token = await user.getIdToken();
+
+      const response = await axios.get(
+        `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/items/claims/my-claims`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      setMyClaims(response.data.claims || []);
+    } catch (err) {
+      console.error("Failed to fetch my claims:", err);
+    } finally {
+      setLoadingClaims(false);
+    }
+  };
+
   const getStatusBadge = (status) => {
     if (status === "pending") {
       return (
@@ -105,10 +133,10 @@ function DashboardContent() {
           ⏳ Pending
         </span>
       );
-    } else if (status === "approved") {
+    } else if (status === "approved" || status === "active") {
       return (
         <span className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-semibold">
-          ✅ Approved
+          ✅ Active
         </span>
       );
     } else if (status === "rejected") {
@@ -117,13 +145,50 @@ function DashboardContent() {
           ❌ Rejected
         </span>
       );
+    } else if (status === "found") {
+      return (
+        <span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-semibold">
+          🎉 Found
+        </span>
+      );
     }
     return null;
   };
 
+  const handleMarkAsFound = async (itemId) => {
+    if (!confirm('Mark this item as found? This will remove it from the active lost items list.')) {
+      return;
+    }
+
+    try {
+      const user = auth.currentUser;
+      if (!user) return;
+
+      const token = await user.getIdToken();
+
+      const response = await axios.post(
+        `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/items/lost/${itemId}/mark-found`,
+        {},
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      if (response.data.status === 'success') {
+        alert('Item marked as found!');
+        await fetchMyReports();
+      }
+    } catch (err) {
+      console.error('Failed to mark item as found:', err);
+      alert('Failed to mark item as found');
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Hero Section with Quick Actions */}
+      {/* Hero Section */}
       <div className="bg-gradient-to-r from-primary to-secondary text-white py-12">
         <div className="container-custom">
           <h1 className="text-4xl font-bold mb-4">Dashboard</h1>
@@ -221,6 +286,16 @@ function DashboardContent() {
           >
             My Reports
           </button>
+          <button
+            onClick={() => setActiveTab("my-claims")}
+            className={`px-6 py-3 rounded-lg font-semibold transition-all ${
+              activeTab === "my-claims"
+                ? "bg-primary text-white shadow-lg"
+                : "bg-white text-gray-700 hover:bg-gray-100"
+            }`}
+          >
+            My Claims ({myClaims.length})
+          </button>
         </div>
 
         {/* Browse Items Tab */}
@@ -272,11 +347,6 @@ function DashboardContent() {
           <div>
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-2xl font-bold">My Reported Items</h2>
-              <Link href="/my-reports">
-                <button className="text-primary hover:underline font-semibold">
-                  View All Details →
-                </button>
-              </Link>
             </div>
 
             {loadingMyItems ? (
@@ -325,6 +395,16 @@ function DashboardContent() {
                           <div className="absolute top-4 right-4">
                             {getStatusBadge(item.status)}
                           </div>
+                          {item.status === "active" && (
+                            <div className="absolute bottom-4 left-4 right-4">
+                              <button
+                                onClick={() => handleMarkAsFound(item.id)}
+                                className="w-full bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 font-semibold text-sm"
+                              >
+                                ✓ Mark as Found
+                              </button>
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -350,52 +430,106 @@ function DashboardContent() {
             )}
           </div>
         )}
-      </div>
 
-      {/* Info Banner */}
-      <div className="bg-blue-50 border-t border-blue-100 py-8">
-        <div className="container-custom">
-          <div className="flex items-center justify-center text-center">
-            <div className="max-w-2xl">
-              <h3 className="text-lg font-bold text-blue-900 mb-2">
-                📢 All items are reviewed before appearing here
-              </h3>
-              <p className="text-sm text-blue-700">
-                Our admin team reviews all submissions to ensure quality and
-                accuracy. Your reported items will appear here once approved.
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
+        {/* My Claims Tab */}
+        {activeTab === "my-claims" && (
+          <div>
+            <h2 className="text-2xl font-bold mb-6">My Claim Requests</h2>
 
-      {/* Tips Section */}
-      <div className="bg-primary text-white py-12">
-        <div className="container-custom">
-          <h2 className="text-3xl font-bold mb-8 text-center">
-            Tips for Success
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="bg-white bg-opacity-10 backdrop-blur-sm p-6 rounded-lg">
-              <h3 className="text-xl font-bold mb-3">📸 Clear Photos</h3>
-              <p className="text-sm">
-                Take clear, well-lit photos when reporting items
-              </p>
-            </div>
-            <div className="bg-white bg-opacity-10 backdrop-blur-sm p-6 rounded-lg">
-              <h3 className="text-xl font-bold mb-3">📍 Exact Location</h3>
-              <p className="text-sm">
-                Provide specific location details to help others
-              </p>
-            </div>
-            <div className="bg-white bg-opacity-10 backdrop-blur-sm p-6 rounded-lg">
-              <h3 className="text-xl font-bold mb-3">⚡ Act Quickly</h3>
-              <p className="text-sm">
-                Report items as soon as possible for better results
-              </p>
-            </div>
+            {loadingClaims ? (
+              <div className="flex justify-center items-center py-12">
+                <div className="animate-spin rounded-full h-8 w-8 border-4 border-primary border-t-transparent"></div>
+              </div>
+            ) : myClaims.length === 0 ? (
+              <div className="bg-gray-100 p-8 rounded-lg text-center">
+                <p className="text-gray-600 mb-4">
+                  You haven't submitted any claim requests yet
+                </p>
+                <p className="text-sm text-gray-500">
+                  Claims you make on found items will appear here
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {myClaims.map((claim) => (
+                  <div
+                    key={claim.claim_id}
+                    className={`border-2 rounded-lg p-6 ${
+                      claim.status === 'approved' ? 'border-green-300 bg-green-50' :
+                      claim.status === 'rejected' ? 'border-red-300 bg-red-50' :
+                      'border-gray-200 bg-white'
+                    }`}
+                  >
+                    <div className="flex gap-6">
+                      {claim.item.image_url && (
+                        <div className="flex-shrink-0">
+                          <img
+                            src={`${process.env.NEXT_PUBLIC_BACKEND_URL}${claim.item.image_url}`}
+                            alt={claim.item.description}
+                            className="w-32 h-32 object-cover rounded-lg border-2 border-gray-200"
+                          />
+                        </div>
+                      )}
+
+                      <div className="flex-1">
+                        <div className="flex items-start justify-between mb-3">
+                          <div>
+                            <h3 className="text-xl font-bold text-gray-900 mb-1">
+                              {claim.item.description}
+                            </h3>
+                            <div className="space-y-1 text-sm text-gray-600">
+                              <p>📍 {claim.item.location}</p>
+                              <p>📅 Found: {new Date(claim.item.date_found).toLocaleDateString()}</p>
+                              <p>🕐 Claimed: {new Date(claim.created_at).toLocaleString()}</p>
+                            </div>
+                          </div>
+                          {getStatusBadge(claim.status)}
+                        </div>
+
+                        {claim.status === 'pending' && (
+                          <div className="mt-3 bg-yellow-50 border border-yellow-200 rounded p-3">
+                            <p className="text-sm text-yellow-800">
+                              ⏳ Your claim is being reviewed by an admin.
+                            </p>
+                          </div>
+                        )}
+
+                        {claim.status === 'approved' && (
+                          <div className="mt-3 bg-green-50 border border-green-200 rounded p-3">
+                            <p className="text-sm text-green-800 font-semibold mb-1">
+                              ✅ Your claim has been approved!
+                            </p>
+                            <p className="text-sm text-green-700">
+                              Please visit the Lost & Found office to collect your item.
+                            </p>
+                            {claim.admin_notes && (
+                              <p className="text-sm text-green-700 mt-2">
+                                <strong>Admin notes:</strong> {claim.admin_notes}
+                              </p>
+                            )}
+                          </div>
+                        )}
+
+                        {claim.status === 'rejected' && (
+                          <div className="mt-3 bg-red-50 border border-red-200 rounded p-3">
+                            <p className="text-sm text-red-800 font-semibold mb-1">
+                              ❌ Your claim was not approved
+                            </p>
+                            {claim.admin_notes && (
+                              <p className="text-sm text-red-700">
+                                <strong>Reason:</strong> {claim.admin_notes}
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-        </div>
+        )}
       </div>
 
       {/* Footer */}

@@ -44,7 +44,7 @@ class LostItemDB(Base):
     location = Column(String, nullable=False)
     date_lost = Column(DateTime, nullable=False)
     image_url = Column(String, nullable=True)
-    status = Column(String, default="pending")  # pending, approved, found, rejected
+    status = Column(String, default="active")  # pending, approved, found, rejected
     created_at = Column(DateTime, default=datetime.utcnow)
     
     # NEW: Incident Report Fields

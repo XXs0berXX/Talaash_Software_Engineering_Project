@@ -79,3 +79,4 @@ venv/
 backend/venv/
 backend/talashenv/
 
+backend/app/*.json

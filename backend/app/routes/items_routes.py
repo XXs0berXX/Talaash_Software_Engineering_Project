@@ -238,7 +238,6 @@ def get_found_item(
     
     return db_item
 
-
 @router.post("/found/{item_id}/claim")
 def claim_found_item(
     item_id: int,
@@ -247,8 +246,9 @@ def claim_found_item(
     db: Session = Depends(get_db)
 ):
     """
-    Submit a claim for a found item
-    User provides their contact info and the claim is pending admin approval
+    Submit a claim request for a found item
+    Creates a pending claim that requires admin approval
+    Item remains visible to other users until admin approves a claim
     """
     
     token_str = token.credentials
@@ -273,39 +273,107 @@ def claim_found_item(
             detail="Item not found"
         )
     
+    # Check item status
     if db_item.status != "approved":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"This item cannot be claimed. Status: {db_item.status}"
+            detail=f"This item cannot be claimed. Current status: {db_item.status}"
         )
     
+    # Prevent self-claiming
     if db_item.user_id == db_user.id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="You cannot claim an item you reported"
         )
     
-    db_item.claimed_by_name = request.name
-    db_item.claimed_by_email = request.email
-    db_item.claimed_by_mobile = request.mobile
-    db_item.claimed_at = datetime.utcnow()
-    db_item.incident_report = request.notes or "Claim submitted by user. Awaiting admin verification."
-    db_item.status = "claimed"
+    # Check if user already has a pending claim for this item
+    from app.models.claim_request_model import has_user_claimed_item, create_claim_request
     
-    db.commit()
-    db.refresh(db_item)
+    if has_user_claimed_item(db, db_user.id, item_id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You have already submitted a claim for this item. Please wait for admin review."
+        )
+    
+    # Create claim request
+    claim_request = create_claim_request(
+        db=db,
+        item_id=item_id,
+        user_id=db_user.id,
+        claimant_name=request.name,
+        claimant_email=request.email,
+        claimant_mobile=request.mobile,
+        notes=request.notes
+    )
     
     return {
         "status": "success",
-        "message": "Claim submitted successfully! Please visit the Lost & Found office for verification.",
-        "item": {
-            "id": db_item.id,
-            "description": db_item.description,
-            "status": db_item.status,
-            "claimed_at": db_item.claimed_at.isoformat() if db_item.claimed_at else None
+        "message": "Claim request submitted successfully! An admin will review your request. The item will remain available until your claim is approved.",
+        "claim_request": {
+            "id": claim_request.id,
+            "item_id": claim_request.item_id,
+            "status": claim_request.status,
+            "created_at": claim_request.created_at.isoformat()
         }
     }
 
+
+
+# endpoint to get user's claim requests
+@router.get("/claims/my-claims")
+def get_my_claims(
+    token: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db)
+):
+    """Get all claim requests submitted by the current user"""
+    
+    token_str = token.credentials
+    user_data = get_user_from_token(token_str)
+    if not user_data:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token"
+        )
+    
+    db_user = get_user_by_email(db, user_data.get("email"))
+    if not db_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    from app.models.claim_request_model import get_user_claim_requests, ClaimRequestDB
+    from app.models.item_model import FoundItemDB
+    
+    claims = get_user_claim_requests(db, db_user.id)
+    
+    # Enrich with item details
+    result = []
+    for claim in claims:
+        item = db.query(FoundItemDB).filter(FoundItemDB.id == claim.item_id).first()
+        if item:
+            result.append({
+                "claim_id": claim.id,
+                "status": claim.status,
+                "created_at": claim.created_at.isoformat(),
+                "reviewed_at": claim.reviewed_at.isoformat() if claim.reviewed_at else None,
+                "admin_notes": claim.admin_notes,
+                "item": {
+                    "id": item.id,
+                    "description": item.description,
+                    "location": item.location,
+                    "date_found": item.date_found.isoformat() if item.date_found else None,
+                    "image_url": item.image_url,
+                    "status": item.status
+                }
+            })
+    
+    return {
+        "status": "success",
+        "claims": result,
+        "total": len(result)
+    }
 
 @router.get("/found/user/{user_id}")
 def get_user_found_items(
@@ -568,3 +636,53 @@ def delete_lost_item(
     db.commit()
     
     return {"status": "success", "message": "Item deleted successfully"}
+
+
+@router.post("/lost/{item_id}/mark-found")
+def mark_lost_item_as_found(
+    item_id: int,
+    token: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db)
+):
+    """Mark a lost item as found (only owner can mark)"""
+    
+    token_str = token.credentials
+    user_data = get_user_from_token(token_str)
+    if not user_data:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token"
+        )
+    
+    db_user = get_user_by_email(db, user_data.get("email"))
+    if not db_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    db_item = db.query(LostItemDB).filter(LostItemDB.id == item_id).first()
+    if not db_item:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Item not found"
+        )
+    
+    if db_item.user_id != db_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only mark your own items as found"
+        )
+    
+    db_item.status = "found"
+    db.commit()
+    db.refresh(db_item)
+    
+    return {
+        "status": "success",
+        "message": "Item marked as found successfully!",
+        "item": {
+            "id": db_item.id,
+            "status": db_item.status
+        }
+    }
